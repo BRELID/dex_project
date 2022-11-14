@@ -76,8 +76,13 @@ contract Token {
         address _to,
         uint256 _value
     ) public returns (bool success) {
+        //console.log(_from, _to, _value);
+
         // Check approval and the size of the value
+        //require(_value <= balanceOf[_from], 'insufficient balance');
         require(_value <= balanceOf[_from]);
+
+        //require(_value <= allowance[_from][msg.sender], 'insufficient allowance');
         require(_value <= allowance[_from][msg.sender]);
 
         // Reset Allowance
