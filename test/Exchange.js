@@ -8,13 +8,14 @@ const tokens = (n) => {
 
 describe('Exchange', () => {
     const feePercent = 10
-    let accounts, exchange, feeAccount, deployer, token1, user1
+    let accounts, exchange, feeAccount, deployer, token1, token2, user1
 
     beforeEach(async () => {
         const Exchange = await ethers.getContractFactory('Exchange')
         const Token = await ethers.getContractFactory('Token')
 
         token1 = await Token.deploy("DEX O", "DEXO", "1000000")
+        token2 = await Token.deploy("USD Tether", "USDT", "1000000")
 
         accounts = await ethers.getSigners()
         deployer = accounts[0]
@@ -63,7 +64,7 @@ describe('Exchange', () => {
             })
 
             it('Emits an Deposit event', async () => {
-                // 2 events are emited so we need to take the second one
+                // 2 events are emitted so we need to take the second one
                 const event = result.events[1]
                 expect(event.event).to.equal('Deposit')
 
@@ -83,6 +84,121 @@ describe('Exchange', () => {
             })
         })
 
+    })
+
+    describe('Withdrawing Tokens', () => {
+        let transaction, result
+        let amount = tokens(10)
+
+        describe('Success', () => {
+            beforeEach(async () => {
+                // Deposit tokens before withdrawing
+
+                // Approve Token
+                transaction = await token1.connect(user1).approve(exchange.address, amount)
+                result = await transaction.wait()
+                // Deposit token
+                transaction = await exchange.connect(user1).depositToken(token1.address, amount)
+                result = await transaction.wait()
+
+                // Now withdraw Tokens
+                transaction = await exchange.connect(user1).withdrawToken(token1.address, amount)
+                result = await transaction.wait()
+            })
+
+            it('withdraws token funds', async () => {
+                expect(await token1.balanceOf(exchange.address)).to.equal(0)
+                expect(await exchange.tokens(token1.address, user1.address)).to.equal(0)
+                expect(await exchange.balanceOf(token1.address, user1.address)).to.equal(0)
+            })
+
+            it('emits a Withdraw event', async () => {
+                const event = result.events[1] // 2 events are emitted
+                expect(event.event).to.equal('Withdraw')
+
+                const args = event.args
+                expect(args.token).to.equal(token1.address)
+                expect(args.user).to.equal(user1.address)
+                expect(args.amount).to.equal(amount)
+                expect(args.balance).to.equal(0)
+            })
+
+        })
+
+        describe('Failure', () => {
+            it('fails for insufficient balances', async () => {
+                // Attempt to withdraw tokens without depositing
+                await expect(exchange.connect(user1).withdrawToken(token1.address, amount)).to.be.reverted
+            })
+        })
+
+    })
+
+    describe('Checking Balances', () => {
+        let transaction, result
+        let amount = tokens(1)
+
+        beforeEach(async () => {
+            // Approve Token
+            transaction = await token1.connect(user1).approve(exchange.address, amount)
+            result = await transaction.wait()
+            // Deposit token
+            transaction = await exchange.connect(user1).depositToken(token1.address, amount)
+            result = await transaction.wait()
+        })
+
+        it('returns user balance', async () => {
+            expect(await exchange.balanceOf(token1.address, user1.address)).to.equal(amount)
+        })
+
+    })
+
+    describe('Making orders', async () => {
+        let transaction, result
+
+        let amount = tokens(1)
+
+        describe('Success', async () => {
+            beforeEach(async () => {
+                // Deposit tokens before making order
+
+                // Approve Token
+                transaction = await token1.connect(user1).approve(exchange.address, amount)
+                result = await transaction.wait()
+                // Deposit token
+                transaction = await exchange.connect(user1).depositToken(token1.address, amount)
+                result = await transaction.wait()
+
+                // Make order
+                transaction = await exchange.connect(user1).makeOrder(token2.address, amount, token1.address, amount)
+                result = await transaction.wait()
+            })
+
+            it('tracks the newly created order', async () => {
+                expect(await exchange.orderCount()).to.equal(1)
+            })
+
+            it('emits an Order event', async () => {
+                const event = result.events[0]
+                expect(event.event).to.equal('Order')
+
+                const args = event.args
+                expect(args.id).to.equal(1)
+                expect(args.user).to.equal(user1.address)
+                expect(args.tokenGet).to.equal(token2.address)
+                expect(args.amountGet).to.equal(tokens(1))
+                expect(args.tokenGive).to.equal(token1.address)
+                expect(args.amountGive).to.equal(tokens(1))
+                expect(args.timestamp).to.at.least(1)
+            })
+
+        })
+
+        describe('Failure', async () => {
+            it('Rejects with no balance', async () => {
+                await expect(exchange.connect(user1).makeOrder(token2.address, tokens(1), token1.address, tokens(1))).to.be.reverted
+            })
+        })
     })
 
 })

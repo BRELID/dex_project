@@ -8,7 +8,7 @@ import "./Token.sol";
 /*
 This Exchange contract can do :
 
-1) Deposit Tokens - V
+1) Deposit Tokens
 2) Withdraw Tokens
 3) Check Balances
 
@@ -17,22 +17,51 @@ This Exchange contract can do :
 6) Fill Orders
 
 7) Charge Fees
-8) Track Fee Account - V
+8) Track Fee Account
 */
 contract Exchange {
     address public feeAccount;
     uint256 public feePercent;
     mapping(address => mapping(address => uint256)) public tokens;
+    mapping(uint256 => _Order) public orders;
+    uint256 public orderCount; // give an id each time we call make Order
 
     event Deposit(address token, address user, uint256 amount, uint256 balance);
+    event Withdraw(
+        address token,
+        address user,
+        uint256 amount,
+        uint256 balance
+    );
+
+    event Order(
+        uint256 id,
+        uint256 timestamp,
+        address user,
+        address tokenGet,
+        uint256 amountGet,
+        address tokenGive,
+        uint256 amountGive
+    );
+
+    struct _Order {
+        // Attributes of an order
+        uint256 id; // Unique identifier for order
+        uint256 timestamp; // When order was created
+        address user; // User who made order
+        address tokenGet; // Address of the token they receive
+        uint256 amountGet; // Amount they receive
+        address tokenGive; // Address of the token they give
+        uint256 amountGive; // Amount they give
+    }
 
     constructor(address _feeAccount, uint256 _feePercent) {
         feeAccount = _feeAccount;
         feePercent = _feePercent;
     }
 
-    /*********************/
-    /* 1) Deposit Tokens */
+    /********************************************/
+    /* 1) Deposit Tokens and 2) Withdraw Tokens */
     function depositToken(address _token, uint256 _amount) public {
         // Transfer tokens to exchange
         // msg.sender = The person who wants to make the deposit by initiating the contract
@@ -45,7 +74,19 @@ contract Exchange {
         emit Deposit(_token, msg.sender, _amount, tokens[_token][msg.sender]);
     }
 
-    /*********************/
+    function withdrawToken(address _token, uint256 _amount) public {
+        // Ensure user has enough tokens to withdraw
+        require(tokens[_token][msg.sender] >= _amount);
+
+        // Transfer tokens to user
+        Token(_token).transfer(msg.sender, _amount);
+
+        // Update user balance
+        tokens[_token][msg.sender] = tokens[_token][msg.sender] - _amount;
+
+        // Emit event
+        emit Withdraw(_token, msg.sender, _amount, tokens[_token][msg.sender]);
+    }
 
     // Check Balances
     function balanceOf(address _token, address _user)
@@ -55,4 +96,46 @@ contract Exchange {
     {
         return tokens[_token][_user];
     }
+
+    /********************************************/
+
+    /***************************************/
+    /* 4) Make Orders and 5) Cancel Orders */
+
+    // Token Give = The token they want to spend - which otken and how much?
+    // Token Get = The token they want to receive - which otken and how much?
+    function makeOrder(
+        address _tokenGet,
+        uint256 _amountGet,
+        address _tokenGive,
+        uint256 _amountGive
+    ) public {
+        // Prevent orders if tokens aren't on exchange
+        require(balanceOf(_tokenGive, msg.sender) >= _amountGive);
+
+        // Create a new order
+        orderCount++;
+
+        orders[orderCount] = _Order(
+            orderCount, // id
+            block.timestamp, // get the current timestamp
+            msg.sender, // user
+            _tokenGet,
+            _amountGet,
+            _tokenGive,
+            _amountGive
+        );
+
+        // Emit event
+        emit Order(
+            orderCount,
+            block.timestamp,
+            msg.sender,
+            _tokenGet,
+            _amountGet,
+            _tokenGive,
+            _amountGive
+        );
+    }
+    /***************************************/
 }
